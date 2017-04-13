@@ -30,6 +30,7 @@ from horizon import forms as hz_forms
 from horizon import messages
 from openstack_dashboard.api import glance
 from openstack_dashboard.api import nova
+from openstack_dashboard.api import network
 from oslo_log import log as logging
 from oslo_log import versionutils
 import six
@@ -398,6 +399,18 @@ class KeyPairChoiceField(DynamicChoiceField):
                 nova.novaclient(request).keypairs.list(),
                 key=lambda e: e.name):
             self.choices.append((keypair.name, keypair.name))
+
+
+class SecurityGroupChoiceField(DynamicChoiceField):
+    " This widget allows to select a security group for VMs "
+    @with_request
+    def update(self, request, **kwargs):
+        self.choices = [('', _('Application default security group'))]
+        for secgroup in sorted(
+                network.security_group_list(request),
+                key=lambda e: e.name_or_id):
+            if not secgroup.name_or_id.startswith('murano--'):
+                self.choices.append((secgroup.name_or_id, secgroup.name_or_id))
 
 
 # NOTE(kzaitsev): for transform to work correctly on horizon SelectWidget
