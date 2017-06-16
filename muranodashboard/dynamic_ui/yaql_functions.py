@@ -22,6 +22,20 @@ from yaql.language import yaqltypes
 from muranodashboard.catalog import forms as catalog_forms
 from muranodashboard.dynamic_ui import helpers
 
+from castellan.common import exception as castellan_exception
+from castellan.common.objects import opaque_data
+from castellan import key_manager
+from castellan import options
+
+from keystoneauth1 import identity
+from keystoneauth1 import session
+
+from oslo_context import context as _oslo_context
+
+from django.conf import settings
+
+from oslo_config import cfg
+
 
 @specs.parameter('times', int)
 def _repeat(context, template, times):
@@ -102,8 +116,38 @@ def _ref(context, template_name, parameter_name=None, id_only=None):
         return data
 
 
+@specs.parameter('data', yaqltypes.String())
+def _encrypt_data(context, data):
+    # from remote_pdb import RemotePdb
+    # RemotePdb('127.0.0.1', 4444).set_trace()
+
+    auth = identity.V3Password(auth_url='http://192.169.5.254:5000/v3',
+                               username='admin',
+                               user_domain_name='Default',
+                               password='password',
+                               project_name='admin',
+                               project_domain_name='Default')
+
+    sess = session.Session(auth=auth)
+    auth_context = _oslo_context.RequestContext(
+        auth_token=auth.get_token(sess), tenant=auth.get_project_id(sess))
+
+    options.set_defaults(cfg.CONF,
+                         auth_endpoint=settings.OPENSTACK_KEYSTONE_URL+'/v3')
+
+    manager = key_manager.API()
+    data_bytes = opaque_data.OpaqueData(bytes(data))
+    try:
+        stored_key_id = manager.store(auth_context, data_bytes)
+    except castellan_exception.KeyManagerError as e:
+        # LOG.exception(e)
+        raise
+    return stored_key_id
+
+
 def register(context):
     context.register_function(_repeat, 'repeat')
     context.register_function(_generate_hostname, 'generateHostname')
     context.register_function(_name, 'name')
     context.register_function(_ref, 'ref')
+    context.register_function(_encrypt_data, 'encrypt_data')
