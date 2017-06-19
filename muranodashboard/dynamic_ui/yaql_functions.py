@@ -36,6 +36,10 @@ from django.conf import settings
 
 from oslo_config import cfg
 
+from oslo_log import log as logging
+
+LOG = logging.getLogger(__name__)
+
 
 @specs.parameter('times', int)
 def _repeat(context, template, times):
@@ -118,29 +122,33 @@ def _ref(context, template_name, parameter_name=None, id_only=None):
 
 @specs.parameter('data', yaqltypes.String())
 def _encrypt_data(context, data):
-    # from remote_pdb import RemotePdb
-    # RemotePdb('127.0.0.1', 4444).set_trace()
-
-    auth = identity.V3Password(auth_url='http://192.169.5.254:5000/v3',
-                               username='admin',
-                               user_domain_name='Default',
-                               password='password',
-                               project_name='admin',
-                               project_domain_name='Default')
-
+    try:
+        auth = identity.V3Password(
+            auth_url=settings.KEY_MANAGER['auth_url'],
+            username=settings.KEY_MANAGER['username'],
+            user_domain_name=settings.KEY_MANAGER['user_domain_name'],
+            password=settings.KEY_MANAGER['password'],
+            project_name=settings.KEY_MANAGER['project_name'],
+            project_domain_name=settings.KEY_MANAGER['project_domain_name']
+        )
+    except (KeyError, AttributeError) as e:
+        LOG.exception(e)
+        LOG.error('Could not find valid key manager credentials in the '
+                  'murano-dashboard config. encrypt_data yaql function not '
+                  'available')
+        raise
     sess = session.Session(auth=auth)
     auth_context = _oslo_context.RequestContext(
         auth_token=auth.get_token(sess), tenant=auth.get_project_id(sess))
-
     options.set_defaults(cfg.CONF,
-                         auth_endpoint=settings.OPENSTACK_KEYSTONE_URL+'/v3')
+                         auth_endpoint=settings.KEY_MANAGER['auth_url'])
 
     manager = key_manager.API()
     data_bytes = opaque_data.OpaqueData(bytes(data))
     try:
         stored_key_id = manager.store(auth_context, data_bytes)
     except castellan_exception.KeyManagerError as e:
-        # LOG.exception(e)
+        LOG.exception(e)
         raise
     return stored_key_id
 
