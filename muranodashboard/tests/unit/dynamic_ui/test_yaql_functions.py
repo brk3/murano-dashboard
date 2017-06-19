@@ -89,3 +89,32 @@ class TestYAQLFunctions(testtools.TestCase):
         context = {'?service': mock_service}
         result = yaql_functions._ref(context, 'foo_template')
         self.assertIsNone(result)
+
+    @mock.patch('muranodashboard.dynamic_ui.yaql_functions.key_manager')
+    @mock.patch('muranodashboard.dynamic_ui.yaql_functions.settings')
+    @mock.patch('muranodashboard.dynamic_ui.yaql_functions.identity')
+    def test_encrypt_data(self, mock_identity, mock_settings, mock_keymanager):
+        mock_service = mock.Mock(parameters={'#foo_template': 'foo_data'})
+        context = {'?service': mock_service}
+        yaql_functions._encrypt_data(context, 'secret_password')
+        mock_keymanager.API().store.assert_called_once()
+
+    @mock.patch('muranodashboard.dynamic_ui.yaql_functions.LOG')
+    def test_encrypt_data_not_configured(self, mock_log):
+        mock_service = mock.Mock(parameters={'#foo_template': 'foo_data'})
+        context = {'?service': mock_service}
+        self.assertRaises(AttributeError, yaql_functions._encrypt_data,
+                          context, 'secret_password')
+        mock_log.error.assert_called_once()
+
+    @mock.patch('muranodashboard.dynamic_ui.yaql_functions.LOG')
+    @mock.patch('muranodashboard.dynamic_ui.yaql_functions.settings')
+    @mock.patch('muranodashboard.dynamic_ui.yaql_functions.identity')
+    def test_encrypt_data_badly_configured(self, mock_identity, mock_settings,
+                                           mock_log):
+        mock_service = mock.Mock(parameters={'#foo_template': 'foo_data'})
+        context = {'?service': mock_service}
+        mock_settings.KEY_MANAGER = {}
+        self.assertRaises(KeyError, yaql_functions._encrypt_data,
+                          context, 'secret_password')
+        mock_log.error.assert_called_once()
